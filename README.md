@@ -1,77 +1,96 @@
-# 📡 Job Radar
+# 📡 JobRadar
 
-> Automated job intelligence platform — scrapes 20+ job boards, parses listings with Claude AI, and serves a real-time dashboard on localhost.
+> I automate everything at work. So I automated the job search too.
 
-Built because I automate everything else at work. Why not the job search?
+JobRadar is a self-hosted dashboard that aggregates job listings from 10+ boards, filters them by your profiles, and lets you track applications — all running on localhost via Docker.
+
+![JobRadar Dashboard](docs/screenshot.png)
+
+---
+
+## Why
+
+Most job boards are noise. You end up with 10 tabs open, losing track of what you applied to, seeing the same listings twice across different sites.
+
+This fixes that: one place, auto-refreshed every 2 hours, with status tracking (New → Seen → Applied) and a Kanban view.
 
 ---
 
 ## Architecture
 
-```
+\`\`\`
 ┌─────────────────────────────────────────────────────┐
-│                   docker compose up                  │
+│                 docker compose up                    │
 ├──────────────┬──────────────────┬───────────────────┤
 │   fetcher    │       api        │        ui         │
 │  (Python)    │    (FastAPI)     │  (React + Nginx)  │
 │              │                  │                   │
-│ RSS feeds ──►│                  │  ┌─────────────┐  │
-│              │  SQLite (shared  │  │  Dashboard  │  │
-│ Claude AI ──►│    volume)       │◄─│  Kanban     │  │
-│  web_search  │                  │  │  Profiles   │  │
-│              │  REST API        │  └─────────────┘  │
-│ Cron every   │  /jobs /stats    │                   │
-│   2 hours    │  /profiles       │  localhost:3000   │
+│ RSS feeds ──►│  SQLite on       │  Clean dashboard  │
+│ JSON APIs ──►│  shared volume   │  Listings + Kanban│
+│              │                  │  Profile editor   │
+│ Runs every   │  REST API        │  Source manager   │
+│   2 hours    │  /jobs /stats    │                   │
+│              │  /profiles       │  localhost:3000   │
 └──────────────┴──────────────────┴───────────────────┘
-```
+\`\`\`
 
-**Sources:**
-- **Category A (RSS/API):** RemoteOK, We Work Remotely, Himalayas, Remotive, Working Nomads, Jobspresso, Nodesk, Wellfound, GetOnBrd, Workana, WeRemoto, Hubstaff Talent
-- **Category B (Claude AI search):** Bumeran, Zonajobs, Computrabajo, Indeed AR, Glassdoor, Talent.com
+**Sources (RSS/API — zero cost):**
+Remote OK · We Work Remotely · Himalayas · Working Nomads · Jobspresso · GetOnBrd · Jobicy
 
 ---
 
 ## Quick Start
 
-```bash
+\`\`\`bash
 git clone https://github.com/gnbratig/job-radar
 cd job-radar
 
 cp .env.example .env
-# Edit .env and add your ANTHROPIC_API_KEY
+# Add your ANTHROPIC_API_KEY to .env
 
 docker compose up --build
-```
+\`\`\`
 
 Open **http://localhost:3000**
+
+First fetch runs automatically on startup.
 
 ---
 
 ## Features
 
-- **Auto-fetch** every 2 hours (configurable via `FETCH_INTERVAL_HOURS`)
-- **AI-powered parsing** — Claude extracts tech tags, work mode, salary from raw listings
-- **Status tracking** — New → Seen → Applied → Discarded
-- **Kanban view** for visual pipeline management
-- **Search profiles** — fully editable from the UI (no config file needed)
-- **Notes** per listing
-- **Manual scan** trigger from the dashboard
+| Feature | Details |
+|---|---|
+| Auto-fetch | Every 2h, configurable via \`FETCH_INTERVAL_HOURS\` |
+| Keyword filtering | Profiles filter listings before storing — no noise |
+| Status tracking | New → Seen → Applied → Discarded |
+| Kanban view | Visual pipeline across all statuses |
+| Tech tag detection | Extracts stack from descriptions (Ansible, K8s, AWS…) |
+| Work mode detection | Remote / Hybrid / Onsite auto-detected |
+| Search & filters | By status, source, work mode, free text |
+| Profile editor | Add/edit/delete keyword profiles from the UI |
+| Source manager | Enable/disable individual sources from the UI |
+| Notes | Per-listing notes field |
+| Manual scan | Trigger fetch on demand from the dashboard |
 
 ---
 
 ## Configuration
 
-### Search Profiles (via UI)
-Add/edit/delete keyword profiles directly in the dashboard → **Profiles** tab.
+### Search Profiles
+Managed from the UI → **Profiles** tab. No config file needed.
 
-### Sources (via `fetcher/config.yaml`)
-Enable/disable RSS feeds and search sources. Changes take effect on next container restart.
+Default profiles: DevOps · SRE · Infrastructure Engineer · Automation Engineer · Linux/SysAdmin
+
+### Sources
+Managed from the UI → **Sources** tab. Enable or disable any source without touching config files.
 
 ### Environment Variables
+
 | Variable | Default | Description |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | required | Claude API key |
-| `FETCH_INTERVAL_HOURS` | `2` | Fetch interval in hours |
+| \`ANTHROPIC_API_KEY\` | required | Anthropic API key |
+| \`FETCH_INTERVAL_HOURS\` | \`2\` | How often to fetch new listings |
 
 ---
 
@@ -79,30 +98,29 @@ Enable/disable RSS feeds and search sources. Changes take effect on next contain
 
 | Layer | Tech |
 |---|---|
-| Fetcher | Python 3.12, feedparser, Anthropic SDK |
-| API | FastAPI, SQLite |
-| UI | React 18, Vite, Tailwind CSS |
-| Infra | Docker Compose, Nginx |
-| AI | Claude Sonnet (web_search tool) |
+| Fetcher | Python 3.12 · feedparser · requests |
+| API | FastAPI · SQLite |
+| UI | React 18 · Vite · Tailwind CSS |
+| Infra | Docker Compose · Nginx |
 
 ---
 
 ## Project Structure
 
-```
+\`\`\`
 job-radar/
 ├── docker-compose.yml
 ├── .env.example
 ├── fetcher/
-│   ├── main.py              # Orchestrator + scheduler
-│   ├── config.yaml          # Source definitions
+│   ├── main.py               # Orchestrator + scheduler
+│   ├── config.yaml           # RSS source definitions
 │   └── sources/
-│       ├── rss_fetcher.py   # Category A: direct RSS/API
-│       └── search_fetcher.py # Category B: Claude web search
+│       ├── rss_fetcher.py    # RSS/Atom feed parser
+│       └── jobicy_fetcher.py # Jobicy JSON API client
 ├── api/
-│   └── main.py              # FastAPI REST API
+│   └── main.py               # FastAPI — jobs, stats, profiles, sources
 ├── db/
-│   └── init.sql             # SQLite schema
+│   └── init.sql              # SQLite schema
 └── ui/
     └── src/
         ├── App.jsx
@@ -111,17 +129,11 @@ job-radar/
             ├── JobCard.jsx
             ├── FilterBar.jsx
             ├── KanbanView.jsx
-            └── ProfileConfig.jsx
-```
+            ├── ProfileConfig.jsx
+            └── SourcesConfig.jsx
+\`\`\`
 
 ---
 
-## Why Claude for job search?
-
-Most job portals don't have structured APIs. Claude's `web_search` tool can query sites like Bumeran or Glassdoor and return normalized JSON — no brittle CSS selectors, no CAPTCHA fights, no maintenance overhead when the site redesigns.
-
-The tradeoff: it costs a few API cents per search cycle. For a 2-hour interval, that's negligible.
-
----
-
-*Built by [Gabriel Bratig](https://linkedin.com/in/gabriel-bratig) — Senior DevOps & Infrastructure Automation Engineer*
+*Built by [Gabriel Bratig](https://www.linkedin.com/in/gabriel-bratig) — Senior DevOps & Infrastructure Automation Engineer*  
+*Open to fully remote opportunities · [LinkedIn](https://www.linkedin.com/in/gabriel-bratig)*
