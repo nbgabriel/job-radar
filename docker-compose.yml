@@ -1,0 +1,35 @@
+services:
+  api:
+    build: ./api
+    ports:
+      - "8000:8000"
+    volumes:
+      - sqlite_data:/data
+      - ./db/init.sql:/app/init.sql:ro
+    environment:
+      - DATABASE_URL=/data/jobradar.db
+    restart: unless-stopped
+
+  fetcher:
+    build: ./fetcher
+    volumes:
+      - sqlite_data:/data
+      - ./fetcher/config.yaml:/app/config.yaml
+    environment:
+      - DATABASE_URL=/data/jobradar.db
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - FETCH_INTERVAL_HOURS=${FETCH_INTERVAL_HOURS:-2}
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  ui:
+    build: ./ui
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  sqlite_data:

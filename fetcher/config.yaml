@@ -1,0 +1,30 @@
+rss_sources:
+  - name: "Remote OK"
+    url: "https://remoteok.com/remote-devops-jobs.rss"
+    type: rss
+
+  - name: "We Work Remotely – DevOps"
+    url: "https://weworkremotely.com/categories/remote-devops-sysadmin-jobs.rss"
+    type: rss
+
+  - name: "We Work Remotely – Engineering"
+    url: "https://weworkremotely.com/categories/remote-programming-jobs.rss"
+    type: rss
+
+  - name: "Himalayas"
+    url: "https://himalayas.app/jobs/rss"
+    type: rss
+
+  - name: "Working Nomads"
+    url: "https://www.workingnomads.com/feed?category=devops"
+    type: rss
+
+  - name: "Jobspresso"
+    url: "https://jobspresso.co/feed/"
+    type: rss
+
+  - name: "GetOnBrd"
+    url: "https://www.getonbrd.com/jobs.rss"
+    type: rss
+
+search_sources: []
