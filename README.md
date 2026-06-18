@@ -18,21 +18,11 @@ This fixes that: one place, auto-refreshed every 2 hours, with status tracking (
 
 ## Architecture
 
-\`\`\`
-┌─────────────────────────────────────────────────────┐
-│                 docker compose up                    │
-├──────────────┬──────────────────┬───────────────────┤
-│   fetcher    │       api        │        ui         │
-│  (Python)    │    (FastAPI)     │  (React + Nginx)  │
-│              │                  │                   │
-│ RSS feeds ──►│  SQLite on       │  Clean dashboard  │
-│ JSON APIs ──►│  shared volume   │  Listings + Kanban│
-│              │                  │  Profile editor   │
-│ Runs every   │  REST API        │  Source manager   │
-│   2 hours    │  /jobs /stats    │                   │
-│              │  /profiles       │  localhost:3000   │
-└──────────────┴──────────────────┴───────────────────┘
-\`\`\`
+Three Docker services sharing a SQLite volume:
+
+- **fetcher** (Python) — pulls RSS feeds and JSON APIs every 2 hours, filters by keyword profiles, stores results
+- **api** (FastAPI) — REST API serving jobs, stats, profiles, and sources
+- **ui** (React + Nginx) — dashboard at `localhost:3000`
 
 **Sources (RSS/API — zero cost):**
 Remote OK · We Work Remotely · Himalayas · Working Nomads · Jobspresso · GetOnBrd · Jobicy
@@ -41,7 +31,7 @@ Remote OK · We Work Remotely · Himalayas · Working Nomads · Jobspresso · Ge
 
 ## Quick Start
 
-\`\`\`bash
+```bash
 git clone https://github.com/gnbratig/job-radar
 cd job-radar
 
@@ -49,7 +39,7 @@ cp .env.example .env
 # Add your ANTHROPIC_API_KEY to .env
 
 docker compose up --build
-\`\`\`
+```
 
 Open **http://localhost:3000**
 
@@ -61,7 +51,7 @@ First fetch runs automatically on startup.
 
 | Feature | Details |
 |---|---|
-| Auto-fetch | Every 2h, configurable via \`FETCH_INTERVAL_HOURS\` |
+| Auto-fetch | Every 2h, configurable via `FETCH_INTERVAL_HOURS` |
 | Keyword filtering | Profiles filter listings before storing — no noise |
 | Status tracking | New → Seen → Applied → Discarded |
 | Kanban view | Visual pipeline across all statuses |
@@ -89,8 +79,8 @@ Managed from the UI → **Sources** tab. Enable or disable any source without to
 
 | Variable | Default | Description |
 |---|---|---|
-| \`ANTHROPIC_API_KEY\` | required | Anthropic API key |
-| \`FETCH_INTERVAL_HOURS\` | \`2\` | How often to fetch new listings |
+| `ANTHROPIC_API_KEY` | required | Anthropic API key |
+| `FETCH_INTERVAL_HOURS` | `2` | How often to fetch new listings |
 
 ---
 
@@ -107,7 +97,7 @@ Managed from the UI → **Sources** tab. Enable or disable any source without to
 
 ## Project Structure
 
-\`\`\`
+```
 job-radar/
 ├── docker-compose.yml
 ├── .env.example
@@ -131,7 +121,7 @@ job-radar/
             ├── KanbanView.jsx
             ├── ProfileConfig.jsx
             └── SourcesConfig.jsx
-\`\`\`
+```
 
 ---
 
