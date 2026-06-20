@@ -23,8 +23,8 @@ rss_sources:
     url: "https://jobspresso.co/feed/"
     type: rss
 
-  - name: "GetOnBrd"
-    url: "https://www.getonbrd.com/jobs.rss"
+  - name: "FindJobIT"
+    url: "https://findjobit.com/jobs/feed"
     type: rss
 
 search_sources: []

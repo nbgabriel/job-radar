@@ -9,6 +9,9 @@ from datetime import datetime
 from sources.rss_fetcher import fetch_rss
 from sources.search_fetcher import fetch_via_claude_search
 from sources.jobicy_fetcher import fetch_jobicy
+from sources.bumeran_fetcher import fetch_bumeran
+from sources.computrabajo_fetcher import fetch_computrabajo
+from sources.getonbrd_fetcher import fetch_getonbrd
 
 logging.basicConfig(
     level=logging.INFO,
@@ -19,6 +22,22 @@ logger = logging.getLogger("fetcher")
 DB_PATH = os.environ.get("DATABASE_URL", "/data/jobradar.db")
 FETCH_INTERVAL = int(os.environ.get("FETCH_INTERVAL_HOURS", "2")) * 3600
 CONFIG_PATH = os.environ.get("CONFIG_PATH", "/app/config.yaml")
+
+# Bumeran uses Playwright + stealth, which is much heavier/slower than RSS
+# and hits a Cloudflare-protected site, so it runs on its own daily cadence
+# instead of the main 2h loop. State is tracked in a small marker file.
+BUMERAN_INTERVAL = int(os.environ.get("BUMERAN_INTERVAL_HOURS", "24")) * 3600
+BUMERAN_STATE_PATH = os.environ.get("BUMERAN_STATE_PATH", "/data/.bumeran_last_run")
+
+COMPUTRABAJO_INTERVAL = int(os.environ.get("COMPUTRABAJO_INTERVAL_HOURS", "24")) * 3600
+COMPUTRABAJO_STATE_PATH = os.environ.get("COMPUTRABAJO_STATE_PATH", "/data/.computrabajo_last_run")
+
+# GetOnBrd's RSS feed always returns empty, so this scrapes the search page
+# directly. It's a single page load (no per-job detail fetch), much lighter
+# than Bumeran/Computrabajo, but kept on the same daily cadence for consistency
+# and to avoid hammering the site across every 2h cycle.
+GETONBRD_INTERVAL = int(os.environ.get("GETONBRD_INTERVAL_HOURS", "24")) * 3600
+GETONBRD_STATE_PATH = os.environ.get("GETONBRD_STATE_PATH", "/data/.getonbrd_last_run")
 
 
 def get_db():
@@ -106,12 +125,70 @@ def register_sources(conn, config):
                ON CONFLICT(name) DO NOTHING""",
             (source["name"], source.get("base_url", "")),
         )
+    # Bumeran and Computrabajo are code-defined sources (not in config.yaml)
+    conn.execute(
+        """INSERT INTO sources (name, url, type, enabled)
+           VALUES ('Bumeran', 'https://www.bumeran.com.ar', 'scrape', 1)
+           ON CONFLICT(name) DO NOTHING"""
+    )
+    conn.execute(
+        """INSERT INTO sources (name, url, type, enabled)
+           VALUES ('Computrabajo', 'https://ar.computrabajo.com', 'scrape', 1)
+           ON CONFLICT(name) DO NOTHING"""
+    )
+    conn.execute(
+        """INSERT INTO sources (name, url, type, enabled)
+           VALUES ('GetOnBrd', 'https://www.getonbrd.com', 'scrape', 1)
+           ON CONFLICT(name) DO NOTHING"""
+    )
     conn.commit()
 
 
 def get_enabled_source_names(conn) -> set:
     rows = conn.execute("SELECT name FROM sources WHERE enabled = 1").fetchall()
     return {r["name"] for r in rows}
+
+
+def _should_run_daily(state_path: str, interval_seconds: int) -> bool:
+    """Generic daily-cadence check via a marker file (separate from the
+    main fetch cycle's DB-backed timing). Used by scrapers that are too
+    heavy/slow or too risky (Cloudflare-protected) to run every cycle."""
+    if not os.path.exists(state_path):
+        return True
+    try:
+        last_run = float(open(state_path).read().strip())
+    except (ValueError, OSError):
+        return True
+    return (time.time() - last_run) >= interval_seconds
+
+
+def _mark_ran(state_path: str):
+    with open(state_path, "w") as f:
+        f.write(str(time.time()))
+
+
+def should_run_bumeran() -> bool:
+    return _should_run_daily(BUMERAN_STATE_PATH, BUMERAN_INTERVAL)
+
+
+def mark_bumeran_ran():
+    _mark_ran(BUMERAN_STATE_PATH)
+
+
+def should_run_computrabajo() -> bool:
+    return _should_run_daily(COMPUTRABAJO_STATE_PATH, COMPUTRABAJO_INTERVAL)
+
+
+def mark_computrabajo_ran():
+    _mark_ran(COMPUTRABAJO_STATE_PATH)
+
+
+def should_run_getonbrd() -> bool:
+    return _should_run_daily(GETONBRD_STATE_PATH, GETONBRD_INTERVAL)
+
+
+def mark_getonbrd_ran():
+    _mark_ran(GETONBRD_STATE_PATH)
 
 
 def run_fetch():
@@ -181,6 +258,75 @@ def run_fetch():
         err = f"Jobicy API: {e}"
         logger.error(err)
         errors.append(err)
+
+    # ── Bumeran (Playwright + stealth — runs at most once/day) ────────────────
+    if "Bumeran" in enabled_names and should_run_bumeran():
+        try:
+            logger.info("[Bumeran] Daily scrape window reached, running...")
+            jobs = fetch_bumeran(profiles=profiles)
+            inserted = 0
+            for job in jobs:
+                if upsert_job(conn, job):
+                    inserted += 1
+            conn.commit()
+            new_jobs += inserted
+            total_found += len(jobs)
+            update_source_stats(conn, "Bumeran", len(jobs))
+            conn.commit()
+            mark_bumeran_ran()
+            logger.info(f"[Bumeran] {len(jobs)} fetched, {inserted} new")
+        except Exception as e:
+            err = f"Bumeran scrape: {e}"
+            logger.error(err)
+            errors.append(err)
+    elif "Bumeran" in enabled_names:
+        logger.info("[Bumeran] Skipping — daily window not reached yet")
+
+    # ── Computrabajo (Playwright + stealth — runs at most once/day) ───────────
+    if "Computrabajo" in enabled_names and should_run_computrabajo():
+        try:
+            logger.info("[Computrabajo] Daily scrape window reached, running...")
+            jobs = fetch_computrabajo(profiles=profiles)
+            inserted = 0
+            for job in jobs:
+                if upsert_job(conn, job):
+                    inserted += 1
+            conn.commit()
+            new_jobs += inserted
+            total_found += len(jobs)
+            update_source_stats(conn, "Computrabajo", len(jobs))
+            conn.commit()
+            mark_computrabajo_ran()
+            logger.info(f"[Computrabajo] {len(jobs)} fetched, {inserted} new")
+        except Exception as e:
+            err = f"Computrabajo scrape: {e}"
+            logger.error(err)
+            errors.append(err)
+    elif "Computrabajo" in enabled_names:
+        logger.info("[Computrabajo] Skipping — daily window not reached yet")
+
+    # ── GetOnBrd (Playwright + stealth — runs at most once/day) ───────────────
+    if "GetOnBrd" in enabled_names and should_run_getonbrd():
+        try:
+            logger.info("[GetOnBrd] Daily scrape window reached, running...")
+            jobs = fetch_getonbrd(profiles=profiles)
+            inserted = 0
+            for job in jobs:
+                if upsert_job(conn, job):
+                    inserted += 1
+            conn.commit()
+            new_jobs += inserted
+            total_found += len(jobs)
+            update_source_stats(conn, "GetOnBrd", len(jobs))
+            conn.commit()
+            mark_getonbrd_ran()
+            logger.info(f"[GetOnBrd] {len(jobs)} fetched, {inserted} new")
+        except Exception as e:
+            err = f"GetOnBrd scrape: {e}"
+            logger.error(err)
+            errors.append(err)
+    elif "GetOnBrd" in enabled_names:
+        logger.info("[GetOnBrd] Skipping — daily window not reached yet")
 
     # ── Category B: Claude web search ─────────────────────────────────────────
     for source in config.get("search_sources", []):

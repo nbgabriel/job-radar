@@ -147,7 +147,7 @@ export default function App() {
               </>
             )}
 
-            {tab === 'kanban' && <KanbanView jobs={jobs} />}
+            {tab === 'kanban' && <KanbanView jobs={jobs} onStatusChange={handleStatusChange} />}
             {tab === 'profiles' && <ProfileConfig profiles={profiles} onUpdate={() => fetchProfiles().then(setProfiles)} />}
             {tab === 'sources' && <SourcesConfig sources={sources} onUpdate={() => fetchSources().then(setSources)} />}
           </>
