@@ -42,9 +42,6 @@ Some LATAM job boards (Bumeran, Computrabajo) sit behind Cloudflare bot protecti
 git clone https://github.com/nbgabriel/job-radar
 cd job-radar
 
-cp .env.example .env
-# Add your ANTHROPIC_API_KEY to .env
-
 docker compose up --build
 ```
 
@@ -139,4 +136,3 @@ job-radar/
 ---
 
 *Built by [Gabriel Bratig](https://www.linkedin.com/in/gabriel-bratig) — Senior DevOps & Infrastructure Automation Engineer*  
-*Open to fully remote opportunities · [LinkedIn](https://www.linkedin.com/in/gabriel-bratig)*
